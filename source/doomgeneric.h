@@ -3,7 +3,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-
+#define USE_OG_RES_
 #ifdef USE_OG_RES_
 #define DOOMGENERIC_RESX 640
 #define DOOMGENERIC_RESY 400
