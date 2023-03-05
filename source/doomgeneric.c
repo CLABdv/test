@@ -21,7 +21,22 @@ char *fbp = 0;
 long int location = 0;
 uint32_t start_time;
 
+//4 is bytes per pixel on target device
+uint32_t finScreen[DOOM_ACTUAL_RESX*DOOM_ACTUAL_RESY*DOOM_ACTUAL_BYTES_PIXEL];
+
 int x = 0, y = 0;
+float xStep=(float)DOOMGENERIC_RESX/(float)DOOM_ACTUAL_RESX;
+float yStep=(float)DOOMGENERIC_RESY/(float)DOOM_ACTUAL_RESY;
+
+
+
+void shitty_blurry_resample()
+{
+    int xOut=0;
+    float x=0;
+    printf("xStep is %f, yStep is %f\n",xStep,yStep);
+}
+
 void DG_SetWindowTitle(const char *title)
 {
 	// do nothing
@@ -91,6 +106,7 @@ void DG_Init()
 
 void DG_DrawFrame()
 {
+    shitty_blurry_resample();
     for(y=0;y<DOOMGENERIC_RESY;y++)
     {
             location = (y+vinfo.yoffset) * finfo.line_length;
