@@ -24,8 +24,13 @@
 
 // Screen width and height.
 
+#ifdef USE_OG_RES_
 #define SCREENWIDTH  320
 #define SCREENHEIGHT 200
+#else
+#define SCREENWIDTH 171
+#define SCREENHEIGHT 128
+#endif
 
 // Screen width used for "squash" scale functions
 
