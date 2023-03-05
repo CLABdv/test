@@ -23,8 +23,8 @@
 #include "doomtype.h"
 
 // Screen width and height.
-#define SCREENWIDTH 171
-#define SCREENHEIGHT 128
+#define SCREENWIDTH 320
+#define SCREENHEIGHT 200
 
 // Screen width used for "squash" scale functions
 
