@@ -4,9 +4,13 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#ifdef USE_OG_RES_
 #define DOOMGENERIC_RESX 640
 #define DOOMGENERIC_RESY 400
-
+#else
+#define DOOMGENERIC_RESX 178
+#define DOOMGENERIC_RESY 128
+#endif
 
 extern uint32_t* DG_ScreenBuffer;
 extern void dg_Destroy();
