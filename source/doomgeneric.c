@@ -86,10 +86,7 @@ void DG_Init()
                 *(fbp + location + 3) = 0xFF; // no transparency
         }
     }
-    //HACK: Change so it frees at program exit
-
-    /* munmap(fbp, screensize); */
-    /* close(fbfd); */
+    // stuff is freed as main returns.
 }
 
 void DG_DrawFrame()
