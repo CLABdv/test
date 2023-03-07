@@ -1,4 +1,5 @@
 #include "doomgeneric.h"
+#include <math.h>
 
 uint32_t* DG_ScreenBuffer = 0;
 
@@ -22,19 +23,90 @@ long int location = 0;
 uint32_t start_time;
 
 //4 is bytes per pixel on target device
-uint32_t finScreen[DOOM_ACTUAL_RESX*DOOM_ACTUAL_RESY*DOOM_ACTUAL_BYTES_PIXEL];
+uint32_t finScreen[DOOM_ACTUAL_RESX*DOOM_ACTUAL_RESY*4];
 
-int x = 0, y = 0;
-float xStep=(float)DOOMGENERIC_RESX/(float)DOOM_ACTUAL_RESX;
-float yStep=(float)DOOMGENERIC_RESY/(float)DOOM_ACTUAL_RESY;
+// the 0.99... is correction for cases where the decimal repeats infinitely, otherwise the algorithm will try to access memory out of bounds
+// i have no clue how many paranthesis i need, but i know i use too many
+#define x_step ((float)((float)DOOMGENERIC_RESX/(float)DOOM_ACTUAL_RESX))
+#define y_step ((float)((float)DOOMGENERIC_RESY/(float)DOOM_ACTUAL_RESY))
+#define x_side ((float)0.9999*((float)DOOMGENERIC_RESX/(float)DOOM_ACTUAL_RESX))
+#define y_side ((float)0.9999*((float)DOOMGENERIC_RESY/(float)DOOM_ACTUAL_RESY))
+float inverse_x_step = 1.0/x_step;
+float inverse_y_step = 1.0/y_step;
 
-
-
-void shitty_blurry_resample()
+static void shitty_resample()
 {
-    int xOut=0;
-    float x=0;
-    printf("xStep is %f, yStep is %f\n",xStep,yStep);
+    int x_out,y_out;
+    float dx,dy;
+    uint32_t destr,destg,destb;
+    uint32_t desta=0xFF;
+    for(y_out=0;y_out<DOOM_ACTUAL_RESY;y_out++)
+    {
+        float y_top=y_out*y_step;
+        float y_bot=y_top+y_side;
+        int jstart=(int)y_top;
+        int jend=(int)y_bot;
+        float devy1=jstart+1-y_top;
+        float devy2=jend+1-y_bot;
+
+        for(x_out=0;x_out<DOOM_ACTUAL_RESX;x_out++)
+        {
+            float x_left=x_out*x_step;
+            float x_right=x_left+x_side;
+            int istart=(int)x_left;
+            int iend=(int)x_right;
+            float devx1=istart+1-x_left;
+            float devx2=iend+1-x_right;
+
+            destr=0;
+            destg=0;
+            destb=0;
+            for(int i=istart;i<=iend;i++)
+            {
+                //this is inefficient
+                //its an easy fix, i cba rn
+                if(i==istart)
+                    dx=devx1;
+                else if(i==iend)
+                    dx-=devx2;
+                else
+                    dx=1;
+                for(int j=jstart;j<=jend;j++)
+                {
+                    if(j==jstart)
+                        dy=devy1;
+                    else if(j==jend)
+                        dy-=devy2;
+                    else
+                        dy=1;
+
+                    // coeff
+                    float AP = inverse_x_step*inverse_y_step*dx*dy;
+                    // assuming the screen gives the info in AAGGBBRR
+                    uint8_t sourcer=((DG_ScreenBuffer[j*DOOMGENERIC_RESX+i]&0x000000FF)>>0);
+                    uint8_t sourceg=((DG_ScreenBuffer[j*DOOMGENERIC_RESX+i]&0x0000FF00)>>8);
+                    uint8_t sourceb=((DG_ScreenBuffer[j*DOOMGENERIC_RESX+i]&0x00FF0000)>>16);
+                    destr+=AP*sourcer;
+                    destg+=AP*sourceg;
+                    destb+=AP*sourceb;
+                    /* printf("source is %08X | area coeff is %f\n",DG_ScreenBuffer[j*DOOMGENERIC_RESY+i],AP); */
+                    /* printf("sourcer is %02X | sourceg is %02X | sourceb is %02X\n",sourcer,sourceg,sourceb); */
+                }
+            }
+            /* destr%=0x100; */
+            /* destg%=0x100; */
+            /* destb%=0x100; */
+        uint32_t destFin=
+            (destr<<0)+
+            (destg<<8)+
+            (destb<<16)+
+            (desta<<24);
+        /* printf("destFin is %08X | r %02X, | g %02X | b %02X | a %02X\n",destFin,destr,destg,destb,desta); */
+        /* printf("devy1 is %f devy2 is %f devx1 is %f devx2 is %f\n",devy1,devy2,devx1,devx2); */
+        finScreen[y_out*DOOM_ACTUAL_RESX+x_out]=destFin;
+
+        }
+    }
 }
 
 void DG_SetWindowTitle(const char *title)
@@ -51,7 +123,7 @@ static uint64_t get_clock_tick_ms()
 
 void DG_Init()
 {
-
+    int x,y;
     start_time=(uint32_t)get_clock_tick_ms();
 
     // Open the file for reading and writing
@@ -106,11 +178,11 @@ void DG_Init()
 
 void DG_DrawFrame()
 {
-    shitty_blurry_resample();
-    for(y=0;y<DOOMGENERIC_RESY;y++)
+    shitty_resample();
+    for(int y=0;y<DOOM_ACTUAL_RESY;y++)
     {
             location = (y+vinfo.yoffset) * finfo.line_length;
-            memcpy(fbp+location,((char*)DG_ScreenBuffer)+DOOMGENERIC_RESX*y*4,DOOMGENERIC_RESX*4);
+            memcpy(fbp+location,((char*)finScreen)+DOOM_ACTUAL_RESX*y*4,DOOM_ACTUAL_RESX*4);
     }
 }
 
