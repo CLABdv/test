@@ -25,6 +25,7 @@ uint32_t start_time;
 //4 is bytes per pixel on target device
 uint32_t finScreen[DOOM_ACTUAL_RESX*DOOM_ACTUAL_RESY*4];
 
+#if 0
 // the 0.99... is correction for cases where the decimal repeats infinitely, otherwise the algorithm will try to access memory out of bounds
 // i have no clue how many paranthesis i need, but i know i use too many
 #define x_step ((float)((float)DOOMGENERIC_RESX/(float)DOOM_ACTUAL_RESX))
@@ -61,50 +62,97 @@ static void shitty_resample()
             destr=0;
             destg=0;
             destb=0;
+            dx=devx1;
             for(int i=istart;i<=iend;i++)
             {
                 //this is inefficient
                 //its an easy fix, i cba rn
-                if(i==istart)
-                    dx=devx1;
-                else if(i==iend)
+                if(i==iend)
                     dx-=devx2;
-                else
-                    dx=1;
+
+                dy=devy1;
                 for(int j=jstart;j<=jend;j++)
                 {
-                    if(j==jstart)
-                        dy=devy1;
-                    else if(j==jend)
+                    if(j==jend)
                         dy-=devy2;
-                    else
-                        dy=1;
 
                     // coeff
                     float AP = inverse_x_step*inverse_y_step*dx*dy;
-                    // assuming the screen gives the info in AAGGBBRR
+                    /* assuming the screen gives the info in AAGGBBRR */
                     uint8_t sourcer=((DG_ScreenBuffer[j*DOOMGENERIC_RESX+i]&0x000000FF)>>0);
                     uint8_t sourceg=((DG_ScreenBuffer[j*DOOMGENERIC_RESX+i]&0x0000FF00)>>8);
                     uint8_t sourceb=((DG_ScreenBuffer[j*DOOMGENERIC_RESX+i]&0x00FF0000)>>16);
                     destr+=AP*sourcer;
                     destg+=AP*sourceg;
                     destb+=AP*sourceb;
-                    /* printf("source is %08X | area coeff is %f\n",DG_ScreenBuffer[j*DOOMGENERIC_RESY+i],AP); */
-                    /* printf("sourcer is %02X | sourceg is %02X | sourceb is %02X\n",sourcer,sourceg,sourceb); */
+                    dy=1;
                 }
+                dx=1;
             }
-            /* destr%=0x100; */
-            /* destg%=0x100; */
-            /* destb%=0x100; */
         uint32_t destFin=
             (destr<<0)+
             (destg<<8)+
             (destb<<16)+
             (desta<<24);
-        /* printf("destFin is %08X | r %02X, | g %02X | b %02X | a %02X\n",destFin,destr,destg,destb,desta); */
-        /* printf("devy1 is %f devy2 is %f devx1 is %f devx2 is %f\n",devy1,devy2,devx1,devx2); */
         finScreen[y_out*DOOM_ACTUAL_RESX+x_out]=destFin;
+        /* printf("destfin is %08X and testFin is %08X\n",destFin,testFin); */
 
+        }
+    }
+}
+#endif
+
+// ratios
+#define R_X ((float)DOOMGENERIC_RESX-1)/(DOOM_ACTUAL_RESX-1)
+#define R_Y ((float)DOOMGENERIC_RESY-1)/(DOOM_ACTUAL_RESY-1)
+
+
+void set8(uint8_t *cols, uint32_t src, float weight)
+{
+    // assumes AABBGGRR
+    uint8_t r=(src&0x000000FF);
+    uint8_t g=(src&0x0000FF00)>>8;
+    uint8_t b=(src&0x00FF0000)>>16;
+    cols[0]+=(int)r*weight;
+    cols[1]+=(int)g*weight;
+    cols[2]+=(int)b*weight;
+}
+
+// shamelessly stolen from
+// https://chao-ji.github.io/jekyll/update/2018/07/19/BilinearResize.html
+void bilinear_interpol() // interpol is here, hope you haven't done anything naughty
+{
+    uint8_t cols[3];
+    for(int i=0;i<DOOM_ACTUAL_RESY;i++)
+    {
+        int y_top=(int)(i*R_Y);
+        int y_bot=(int)ceilf(i*R_Y); // cast + 1 won't be accurate if the number is prefectly whole (i think)
+
+        float y_weight=(R_Y*i)-y_top;
+        for(int j=0;j<DOOM_ACTUAL_RESX;j++)
+        {
+            int x_left=(int)(j*R_X);
+            int x_right=(int)ceilf(j*R_X);
+
+            float x_weight=(R_X*j)-x_left;
+
+            // pixel to take weights from
+            // top left, top right, bot left, bot right
+            uint32_t tl=DG_ScreenBuffer[y_top*DOOMGENERIC_RESX+x_left];
+            uint32_t tr=DG_ScreenBuffer[y_top*DOOMGENERIC_RESX+x_right];
+            uint32_t bl=DG_ScreenBuffer[y_bot*DOOMGENERIC_RESX+x_left];
+            uint32_t br=DG_ScreenBuffer[y_bot*DOOMGENERIC_RESX+x_right];
+
+            memset(cols,0,sizeof(cols));
+            set8(cols,tl,(1-x_weight)*(1-y_weight));
+            set8(cols,tr,x_weight*(1-y_weight));
+            set8(cols,bl,y_weight*(1-x_weight));
+            set8(cols,br,x_weight*y_weight);
+            uint32_t fin=cols[0]+
+                         (cols[1]<<8)+
+                         (cols[2]<<16)+
+                         (0xFF<<24);
+            finScreen[i*DOOM_ACTUAL_RESX+j]=fin;
         }
     }
 }
@@ -160,25 +208,13 @@ void DG_Init()
     }
     printf("The framebuffer device was mapped to memory successfully.\n");
 
-    // make the background clean
-    for(y=0;y<vinfo.yres;y++)
-    {
-        for(x=0;x<vinfo.xres;x++)
-        {
-            location = (x+vinfo.xoffset) * (vinfo.bits_per_pixel/8) + (y+vinfo.yoffset) * finfo.line_length;
-
-                *(fbp + location) = 0xFF;
-                *(fbp + location + 1) = 0xFF;
-                *(fbp + location + 2) = 0xFF;
-                *(fbp + location + 3) = 0xFF; // no transparency
-        }
-    }
     // stuff is freed as main returns.
 }
 
 void DG_DrawFrame()
 {
-    shitty_resample();
+    /* shitty_resample(); */
+    bilinear_interpol();
     for(int y=0;y<DOOM_ACTUAL_RESY;y++)
     {
             location = (y+vinfo.yoffset) * finfo.line_length;
@@ -208,7 +244,6 @@ uint32_t DG_GetTicksMs()
 void dg_Create()
 {
 	DG_ScreenBuffer = malloc(DOOMGENERIC_RESX * DOOMGENERIC_RESY * 4);
-
 	DG_Init();
 }
 
